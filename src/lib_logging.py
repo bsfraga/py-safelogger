@@ -35,10 +35,9 @@ def configure_logging(
     Prioridade: config_dict > config_file > parâmetros/variáveis de ambiente.
 
     Exemplos de uso:
-    >>> configure_logging(log_level="DEBUG", log_format="json", log_file="app.log")
-    >>> configure_logging(config_file="logging.yaml")
-    >>> configure_logging(config_dict={...})
-    >>> configure_logging(use_structlog=True, structlog_context={"user_id": 42})
+    >>> configure_logging(log_file="app.log", rotation={"type": "size", "maxBytes": 1048576, "backupCount": 5})
+    >>> configure_logging(log_file="app.log", rotation={"type": "time", "when": "midnight", "interval": 1, "backupCount": 7})
+    >>> configure_logging(log_file="app.log", rotation=None)  # Sem rotação
     """
     config = None
     if config_dict:
@@ -82,16 +81,28 @@ def configure_logging(
             }
         if "file" in handlers and log_file:
             file_handler = {
-                "class": "logging.handlers.RotatingFileHandler",
                 "level": log_level,
                 "formatter": "default",
                 "filename": log_file,
-                "encoding": "utf-8",
-                "backupCount": 7,
-                "maxBytes": 10*1024*1024
+                "encoding": "utf-8"
             }
-            if rotation:
-                file_handler.update(rotation)
+            # Rotação por tamanho (RotatingFileHandler)
+            if rotation and rotation.get("type", "size") == "size":
+                file_handler["class"] = "logging.handlers.RotatingFileHandler"
+                file_handler["maxBytes"] = rotation.get("maxBytes", 10*1024*1024)
+                file_handler["backupCount"] = rotation.get("backupCount", 7)
+            # Rotação por tempo (TimedRotatingFileHandler)
+            elif rotation and rotation.get("type") == "time":
+                file_handler["class"] = "logging.handlers.TimedRotatingFileHandler"
+                file_handler["when"] = rotation.get("when", "midnight")
+                file_handler["interval"] = rotation.get("interval", 1)
+                file_handler["backupCount"] = rotation.get("backupCount", 7)
+                file_handler["utc"] = rotation.get("utc", True)
+            # Sem rotação (default: RotatingFileHandler com maxBytes alto)
+            else:
+                file_handler["class"] = "logging.handlers.RotatingFileHandler"
+                file_handler["maxBytes"] = 0
+                file_handler["backupCount"] = 1
             handler_defs["file"] = file_handler
         # Adicionar outros handlers customizados (ex: cloud) conforme necessário
         
