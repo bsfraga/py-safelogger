@@ -21,13 +21,13 @@ Lib de Logging Python — API Pública
 Exemplos de uso:
 
 # 1. Configuração básica
-from py_safelogger import configure_logging, get_traditional_logger
+from py-safelogger import configure_logging, get_traditional_logger
 configure_logging(log_level="INFO")
 logger = get_traditional_logger()
 logger.info("Mensagem informativa", extra={"user_id": 123})
 
 # 2. Logging estruturado com contexto (structlog)
-from py_safelogger import configure_logging, get_structlog_logger
+from py-safelogger import configure_logging, get_structlog_logger
 configure_logging(use_structlog=True)
 logger = get_structlog_logger(user_id=42, role="admin")
 logger.info("Usuário autenticado")
