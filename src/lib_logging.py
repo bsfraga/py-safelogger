@@ -15,6 +15,24 @@ try:
 except ImportError:
     STRUCTLOG_AVAILABLE = False
 
+class RedactFilter(logging.Filter):
+    """
+    Filtro para redação de campos sensíveis em registros de log.
+    Exemplo de uso:
+        configure_logging(redact_fields=["password", "token"])
+    """
+    def __init__(self, fields: List[str]):
+        super().__init__()
+        self.fields = set(fields)
+    def filter(self, record):
+        for field in self.fields:
+            if hasattr(record, field):
+                setattr(record, field, "[REDACTED]")
+            # Se o campo estiver no dicionário extra/contexto
+            if hasattr(record, "__dict__") and field in record.__dict__:
+                record.__dict__[field] = "[REDACTED]"
+        return True
+
 
 def configure_logging(
     env: str = None,
@@ -35,9 +53,9 @@ def configure_logging(
     Prioridade: config_dict > config_file > parâmetros/variáveis de ambiente.
 
     Exemplos de uso:
-    >>> configure_logging(log_file="app.log", rotation={"type": "size", "maxBytes": 1048576, "backupCount": 5})
-    >>> configure_logging(log_file="app.log", rotation={"type": "time", "when": "midnight", "interval": 1, "backupCount": 7})
-    >>> configure_logging(log_file="app.log", rotation=None)  # Sem rotação
+    >>> configure_logging(redact_fields=["password", "token"])
+    >>> logger.info("Cadastro", extra={"email": "user@exemplo.com", "password": "senha123"})
+    # Saída: ... "password": "[REDACTED]"
     """
     config = None
     if config_dict:
@@ -108,14 +126,9 @@ def configure_logging(
         
         filters = {}
         if redact_fields:
-            class RedactFilter(logging.Filter):
-                def filter(self, record):
-                    for field in redact_fields:
-                        if hasattr(record, field):
-                            setattr(record, field, "[REDACTED]")
-                    return True
             filters["redact"] = {
-                "()": RedactFilter
+                "()": RedactFilter,
+                "fields": redact_fields
             }
         
         config = {
