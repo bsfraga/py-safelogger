@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py_safelogger"
-version = "0.1.0"
+version = "0.2.0"
 description = "Biblioteca de logging estruturado para Python"
 authors = [
     {name = "Bruno Schuster Fraga", email = "brunofraga_@outlook.com.br"}

@@ -1,11 +1,11 @@
-# lib_logging
+# py_safelogger
 
 Biblioteca de logging estruturado, flexível e extensível para Python, oferecendo uma solução simplificada para configuração e integração de logs em projetos de todos os tamanhos.
 
 ## Instalação
 
 ```bash
-pip install lib_logging
+pip install py_safelogger
 ```
 
 ## Estrutura do Projeto
@@ -13,7 +13,7 @@ pip install lib_logging
 A biblioteca está organizada de forma modular para facilitar a manutenção e extensão:
 
 ```
-lib_logging/
+py_safelogger/
 ├── src/
 │   ├── filters/           # Filtros para manipulação de logs
 │   │   └── redact.py      # Filtro para redação de dados sensíveis
@@ -22,9 +22,9 @@ lib_logging/
 │   ├── utils/             # Funções utilitárias
 │   │   └── config.py      # Utilitários para carregamento de configurações
 │   ├── structlog_support.py # Integração com structlog
-│   └── lib_logging.py     # Módulo principal e API pública
+│   └── safelogger.py     # Módulo principal e API pública
 └── tests/
-    └── test_lib_logging.py # Testes unitários e integração
+    └── test_safelogger.py # Testes unitários e integração
 ```
 
 ## API Pública
@@ -41,7 +41,7 @@ A biblioteca expõe as seguintes funções e classes principais:
 
 ### 1. Configuração básica
 ```python
-from lib_logging import configure_logging, get_traditional_logger
+from py_safelogger import configure_logging, get_traditional_logger
 configure_logging(log_level="INFO")
 logger = get_traditional_logger()
 logger.info("Mensagem informativa", extra={"user_id": 123})
@@ -49,7 +49,7 @@ logger.info("Mensagem informativa", extra={"user_id": 123})
 
 ### 2. Logging estruturado com contexto (structlog)
 ```python
-from lib_logging import configure_logging, get_structlog_logger
+from py_safelogger import configure_logging, get_structlog_logger
 configure_logging(use_structlog=True)
 logger = get_structlog_logger(user_id=42, role="admin")
 logger.info("Usuário autenticado")
@@ -123,7 +123,7 @@ export LOG_LEVEL=WARNING
 export LOG_FILE=/var/log/app.log
 
 # No código, não precisa passar parâmetros
-from lib_logging import configure_logging
+from py_safelogger import configure_logging
 configure_logging()  # Carrega configuração das variáveis de ambiente
 ```
 

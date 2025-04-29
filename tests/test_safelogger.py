@@ -6,7 +6,7 @@ import sys
 import pytest
 import logging.handlers
 
-from src.lib_logging import configure_logging, get_traditional_logger, get_structlog_logger, RedactFilter, CloudLogHandler
+from src.safelogger import configure_logging, get_traditional_logger, get_structlog_logger, RedactFilter, CloudLogHandler
 from src.utils.config import load_config_from_env
 
 def test_configure_logging_basic():
