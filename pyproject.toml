@@ -26,4 +26,4 @@ test = [
 ]
 
 [tool.setuptools]
-packages = ["src"] 
+packages = ["src", "src.filters", "src.handlers", "src.utils"] 
