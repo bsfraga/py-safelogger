@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lib_logging"
+version = "0.1.0"
+description = "Biblioteca de logging estruturado para Python"
+authors = ["Seu Nome <seu@email.com>"]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "python-json-logger",
+    "structlog"
+] 
