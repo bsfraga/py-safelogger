@@ -9,6 +9,12 @@ try:
 except ImportError:
     yaml = None
 
+try:
+    import structlog
+    STRUCTLOG_AVAILABLE = True
+except ImportError:
+    STRUCTLOG_AVAILABLE = False
+
 
 def configure_logging(
     env: str = None,
@@ -20,18 +26,20 @@ def configure_logging(
     handlers: Optional[List[str]] = None,
     config_dict: Optional[Dict[str, Any]] = None,
     config_file: Optional[str] = None,
+    use_structlog: bool = False,
+    structlog_context: Optional[Dict[str, Any]] = None,
     **kwargs
 ):
     """
-    Configura o sistema de logging de forma centralizada.
+    Configura o sistema de logging de forma centralizada e estruturada.
     Prioridade: config_dict > config_file > parâmetros/variáveis de ambiente.
 
     Exemplos de uso:
     >>> configure_logging(log_level="DEBUG", log_format="json", log_file="app.log")
     >>> configure_logging(config_file="logging.yaml")
     >>> configure_logging(config_dict={...})
+    >>> configure_logging(use_structlog=True, structlog_context={"user_id": 42})
     """
-    # 1. Carregar configuração de dicionário, arquivo ou parâmetros
     config = None
     if config_dict:
         config = config_dict
@@ -45,9 +53,7 @@ def configure_logging(
             else:
                 raise ValueError(f"Formato de arquivo não suportado: {config_file}")
     
-    # 2. Se não houver config pronta, montar a partir dos parâmetros/env
     if not config:
-        # Permitir sobrescrita por variáveis de ambiente
         env = env or os.getenv("LOG_ENV", "production")
         log_format = log_format or os.getenv("LOG_FORMAT", "json")
         log_level = log_level or os.getenv("LOG_LEVEL", "INFO")
@@ -89,7 +95,6 @@ def configure_logging(
             handler_defs["file"] = file_handler
         # Adicionar outros handlers customizados (ex: cloud) conforme necessário
         
-        # Filtro para redação de campos sensíveis
         filters = {}
         if redact_fields:
             class RedactFilter(logging.Filter):
@@ -119,11 +124,57 @@ def configure_logging(
             for h in handler_defs:
                 config["handlers"][h]["filters"] = list(filters.keys())
     
-    # 3. Aplicar configuração
     logging.config.dictConfig(config)
-    
-    # Exemplo básico de configuração inicial
-    logging.basicConfig(level=log_level)
-    
-    # Placeholder para futuras implementações
-    pass 
+
+    # Configuração do structlog para logging estruturado/contextual
+    if use_structlog and STRUCTLOG_AVAILABLE:
+        processors = [
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.UnicodeDecoder(),
+            structlog.processors.CallsiteParameterAdder({
+                structlog.processors.CallsiteParameter.FILENAME,
+                structlog.processors.CallsiteParameter.FUNC_NAME,
+                structlog.processors.CallsiteParameter.LINENO,
+            }),
+            structlog.processors.JSONRenderer() if log_format == "json" else structlog.dev.ConsoleRenderer(),
+        ]
+        structlog.configure(
+            processors=processors,
+            wrapper_class=structlog.stdlib.BoundLogger,
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
+        if structlog_context:
+            logger = structlog.get_logger()
+            logger = logger.bind(**structlog_context)
+            return logger
+    else:
+        # Logging tradicional
+        return logging.getLogger()
+
+
+def get_structlog_logger(**context):
+    """
+    Retorna um logger structlog com contexto já vinculado (se structlog estiver disponível).
+    Caso contrário, retorna o logger tradicional do logging.
+    """
+    if STRUCTLOG_AVAILABLE:
+        logger = structlog.get_logger()
+        if context:
+            logger = logger.bind(**context)
+        return logger
+    else:
+        return logging.getLogger()
+
+
+def get_traditional_logger():
+    """
+    Retorna o logger tradicional do logging.
+    """
+    return logging.getLogger() 
