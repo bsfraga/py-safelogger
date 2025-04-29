@@ -15,6 +15,8 @@ try:
 except ImportError:
     STRUCTLOG_AVAILABLE = False
 
+import sys
+
 class RedactFilter(logging.Filter):
     """
     Filtro para redação de campos sensíveis em registros de log.
@@ -33,6 +35,22 @@ class RedactFilter(logging.Filter):
                 record.__dict__[field] = "[REDACTED]"
         return True
 
+class CloudLogHandler(logging.Handler):
+    """
+    Handler mock para envio de logs para um endpoint HTTP (simulado).
+    Exemplo de uso:
+        configure_logging(handlers=["console", "cloud"], cloud_handler_config={"endpoint": "https://mock.log/api", "token": "abc"})
+    """
+    def __init__(self, endpoint: str, token: str = None, **kwargs):
+        super().__init__()
+        self.endpoint = endpoint
+        self.token = token
+    def emit(self, record):
+        log_entry = self.format(record)
+        # Simulação: imprime no stderr como se estivesse enviando para a nuvem
+        print(f"[MOCK CLOUD] POST {self.endpoint} - Token: {self.token} - Payload: {log_entry}", file=sys.stderr)
+        # Aqui seria feito o requests.post(self.endpoint, ...)
+
 
 def configure_logging(
     env: str = None,
@@ -44,6 +62,8 @@ def configure_logging(
     handlers: Optional[List[str]] = None,
     config_dict: Optional[Dict[str, Any]] = None,
     config_file: Optional[str] = None,
+    cloud_handler_config: Optional[Dict[str, Any]] = None,
+    custom_handlers: Optional[Dict[str, Any]] = None,
     use_structlog: bool = False,
     structlog_context: Optional[Dict[str, Any]] = None,
     **kwargs
@@ -53,9 +73,8 @@ def configure_logging(
     Prioridade: config_dict > config_file > parâmetros/variáveis de ambiente.
 
     Exemplos de uso:
-    >>> configure_logging(redact_fields=["password", "token"])
-    >>> logger.info("Cadastro", extra={"email": "user@exemplo.com", "password": "senha123"})
-    # Saída: ... "password": "[REDACTED]"
+    >>> configure_logging(handlers=["console", "cloud"], cloud_handler_config={"endpoint": "https://mock.log/api", "token": "abc"})
+    >>> configure_logging(custom_handlers={"myhandler": {"class": "my.module.MyHandler", ...}})
     """
     config = None
     if config_dict:
@@ -122,7 +141,17 @@ def configure_logging(
                 file_handler["maxBytes"] = 0
                 file_handler["backupCount"] = 1
             handler_defs["file"] = file_handler
-        # Adicionar outros handlers customizados (ex: cloud) conforme necessário
+        if "cloud" in handlers and cloud_handler_config:
+            handler_defs["cloud"] = {
+                "()": CloudLogHandler,
+                **cloud_handler_config,
+                "level": log_level,
+                "formatter": "default"
+            }
+        # Permitir extensão via custom_handlers
+        if custom_handlers:
+            for name, hcfg in custom_handlers.items():
+                handler_defs[name] = hcfg
         
         filters = {}
         if redact_fields:
