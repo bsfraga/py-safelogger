@@ -4,6 +4,47 @@ import os
 import json
 from typing import Optional, Dict, Any, List
 
+__all__ = [
+    "configure_logging",
+    "get_structlog_logger",
+    "get_traditional_logger",
+    "RedactFilter",
+    "CloudLogHandler"
+]
+
+"""
+Lib de Logging Python — API Pública
+
+Exemplos de uso:
+
+# 1. Configuração básica
+from lib_logging import configure_logging, get_traditional_logger
+configure_logging(log_level="INFO")
+logger = get_traditional_logger()
+logger.info("Mensagem informativa", extra={"user_id": 123})
+
+# 2. Logging estruturado com contexto (structlog)
+from lib_logging import configure_logging, get_structlog_logger
+configure_logging(use_structlog=True)
+logger = get_structlog_logger(user_id=42, role="admin")
+logger.info("Usuário autenticado")
+
+# 3. Logging de erros com stacktrace
+try:
+    1/0
+except Exception:
+    logger.exception("Erro de divisão")
+
+# 4. Logging com redação de dados sensíveis
+configure_logging(redact_fields=["password"])
+logger.info("Cadastro", extra={"email": "user@exemplo.com", "password": "senha123"})
+# Saída: ... "password": "[REDACTED]"
+
+# 5. Logging com handler cloud (mock)
+configure_logging(handlers=["console", "cloud"], cloud_handler_config={"endpoint": "https://mock.log/api", "token": "abc"})
+logger.info("Evento enviado para a nuvem", extra={"event": "login"})
+"""
+
 try:
     import yaml
 except ImportError:
