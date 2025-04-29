@@ -1,8 +1,11 @@
 import logging
 import logging.config
-import os
-import json
 from typing import Optional, Dict, Any, List
+
+from src.filters.redact import RedactFilter
+from src.handlers.cloud import CloudLogHandler
+from src.utils.config import load_config_dict, load_config_file, load_config_from_env
+from src.structlog_support import configure_structlog
 
 __all__ = [
     "configure_logging",
@@ -45,52 +48,12 @@ configure_logging(handlers=["console", "cloud"], cloud_handler_config={"endpoint
 logger.info("Evento enviado para a nuvem", extra={"event": "login"})
 """
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
 
 try:
     import structlog
     STRUCTLOG_AVAILABLE = True
 except ImportError:
     STRUCTLOG_AVAILABLE = False
-
-import sys
-
-class RedactFilter(logging.Filter):
-    """
-    Filtro para redação de campos sensíveis em registros de log.
-    Exemplo de uso:
-        configure_logging(redact_fields=["password", "token"])
-    """
-    def __init__(self, fields: List[str]):
-        super().__init__()
-        self.fields = set(fields)
-    def filter(self, record):
-        for field in self.fields:
-            if hasattr(record, field):
-                setattr(record, field, "[REDACTED]")
-            # Se o campo estiver no dicionário extra/contexto
-            if hasattr(record, "__dict__") and field in record.__dict__:
-                record.__dict__[field] = "[REDACTED]"
-        return True
-
-class CloudLogHandler(logging.Handler):
-    """
-    Handler mock para envio de logs para um endpoint HTTP (simulado).
-    Exemplo de uso:
-        configure_logging(handlers=["console", "cloud"], cloud_handler_config={"endpoint": "https://mock.log/api", "token": "abc"})
-    """
-    def __init__(self, endpoint: str, token: str = None, **kwargs):
-        super().__init__()
-        self.endpoint = endpoint
-        self.token = token
-    def emit(self, record):
-        log_entry = self.format(record)
-        # Simulação: imprime no stderr como se estivesse enviando para a nuvem
-        print(f"[MOCK CLOUD] POST {self.endpoint} - Token: {self.token} - Payload: {log_entry}", file=sys.stderr)
-        # Aqui seria feito o requests.post(self.endpoint, ...)
 
 
 def configure_logging(
@@ -117,26 +80,15 @@ def configure_logging(
     >>> configure_logging(handlers=["console", "cloud"], cloud_handler_config={"endpoint": "https://mock.log/api", "token": "abc"})
     >>> configure_logging(custom_handlers={"myhandler": {"class": "my.module.MyHandler", ...}})
     """
-    config = None
-    if config_dict:
-        config = config_dict
-    elif config_file:
-        ext = os.path.splitext(config_file)[-1].lower()
-        with open(config_file, 'r', encoding='utf-8') as f:
-            if ext in ['.yaml', '.yml'] and yaml:
-                config = yaml.safe_load(f)
-            elif ext == '.json':
-                config = json.load(f)
-            else:
-                raise ValueError(f"Formato de arquivo não suportado: {config_file}")
-    
+    # 1. Carregar configuração
+    config = load_config_dict(config_dict) or load_config_file(config_file)
     if not config:
-        env = env or os.getenv("LOG_ENV", "production")
-        log_format = log_format or os.getenv("LOG_FORMAT", "json")
-        log_level = log_level or os.getenv("LOG_LEVEL", "INFO")
-        log_file = log_file or os.getenv("LOG_FILE")
+        envs = load_config_from_env()
+        env = env or envs["env"]
+        log_format = log_format or envs["log_format"]
+        log_level = log_level or envs["log_level"]
+        log_file = log_file or envs["log_file"]
         handlers = handlers or ["console"]
-        
         formatter = {
             "format": "%(asctime)s %(levelname)s %(name)s %(message)s"
         }
@@ -149,7 +101,6 @@ def configure_logging(
                 }
             except ImportError:
                 pass
-        
         handler_defs = {}
         if "console" in handlers:
             handler_defs["console"] = {
@@ -164,19 +115,16 @@ def configure_logging(
                 "filename": log_file,
                 "encoding": "utf-8"
             }
-            # Rotação por tamanho (RotatingFileHandler)
             if rotation and rotation.get("type", "size") == "size":
                 file_handler["class"] = "logging.handlers.RotatingFileHandler"
                 file_handler["maxBytes"] = rotation.get("maxBytes", 10*1024*1024)
                 file_handler["backupCount"] = rotation.get("backupCount", 7)
-            # Rotação por tempo (TimedRotatingFileHandler)
             elif rotation and rotation.get("type") == "time":
                 file_handler["class"] = "logging.handlers.TimedRotatingFileHandler"
                 file_handler["when"] = rotation.get("when", "midnight")
                 file_handler["interval"] = rotation.get("interval", 1)
                 file_handler["backupCount"] = rotation.get("backupCount", 7)
                 file_handler["utc"] = rotation.get("utc", True)
-            # Sem rotação (default: RotatingFileHandler com maxBytes alto)
             else:
                 file_handler["class"] = "logging.handlers.RotatingFileHandler"
                 file_handler["maxBytes"] = 0
@@ -238,16 +186,7 @@ def configure_logging(
             }),
             structlog.processors.JSONRenderer() if log_format == "json" else structlog.dev.ConsoleRenderer(),
         ]
-        structlog.configure(
-            processors=processors,
-            wrapper_class=structlog.stdlib.BoundLogger,
-            logger_factory=structlog.stdlib.LoggerFactory(),
-            cache_logger_on_first_use=True,
-        )
-        if structlog_context:
-            logger = structlog.get_logger()
-            logger = logger.bind(**structlog_context)
-            return logger
+        return configure_structlog(processors, log_format, structlog_context)
     else:
         # Logging tradicional
         return logging.getLogger()
@@ -259,6 +198,7 @@ def get_structlog_logger(**context):
     Caso contrário, retorna o logger tradicional do logging.
     """
     if STRUCTLOG_AVAILABLE:
+        import structlog
         logger = structlog.get_logger()
         if context:
             logger = logger.bind(**context)
