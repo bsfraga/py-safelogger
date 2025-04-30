@@ -37,6 +37,14 @@ A biblioteca expõe as seguintes funções e classes principais:
 - `RedactFilter`: Filtro para redação de campos sensíveis
 - `CloudLogHandler`: Handler para envio de logs para endpoints HTTP (mock)
 
+### Utilidades de Configuração
+
+A biblioteca também oferece algumas utilidades para gerenciamento de configuração via variáveis de ambiente:
+
+- `validate_required_envs(required_keys)`: Garante que todas as variáveis de ambiente obrigatórias estejam definidas
+- `get_env(key, default, cast)`: Obtém variáveis de ambiente com conversão de tipo segura
+- `load_env()`: Carrega configurações de logging a partir de variáveis de ambiente com logs de inicialização
+
 ## Exemplos de Uso
 
 ### 1. Configuração básica
@@ -127,6 +135,38 @@ from py-safelogger import configure_logging
 configure_logging()  # Carrega configuração das variáveis de ambiente
 ```
 
+### 9. Validação de variáveis de ambiente obrigatórias
+```python
+from py-safelogger.utils.config import validate_required_envs
+
+# Garante que variáveis obrigatórias estejam definidas antes de iniciar a aplicação
+validate_required_envs(["LOG_LEVEL", "LOG_FORMAT", "DATABASE_URL"])
+```
+
+### 10. Obtenção de variáveis de ambiente com conversão de tipo
+```python
+from py-safelogger.utils.config import get_env
+
+# Obtém variáveis de ambiente com conversão de tipo segura
+log_level = get_env("LOG_LEVEL", default="INFO")
+debug_mode = get_env("DEBUG", default=False, cast=bool)
+max_retries = get_env("MAX_RETRIES", default=3, cast=int)
+timeout = get_env("TIMEOUT", default=5.0, cast=float)
+```
+
+### 11. Carregamento explícito de configurações de ambiente com logging
+```python
+import logging
+from py-safelogger.utils.config import load_env
+
+# Configurar logger básico inicial
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("config")
+
+# Carregar configurações com log de inicialização
+config = load_env(require_log_level=True, logger=logger)
+```
+
 ## Segurança e Privacidade
 - O filtro de redação é recursivo e cobre campos sensíveis em estruturas aninhadas e JSON serializado
 - Para ambientes críticos (compliance, auditoria): recomenda-se integrar com soluções de logs imutáveis
@@ -140,6 +180,8 @@ configure_logging()  # Carrega configuração das variáveis de ambiente
   - Integração com sistemas de observabilidade
   - Rotação e múltiplos destinos de log
   - Extensibilidade via handlers e filtros customizados
+  - Validação de configurações "fail-fast"
+  - Carregamento seguro de configurações a partir de variáveis de ambiente
 
 ## Cenários Não Indicados
 - Scripts simples ou automações pequenas onde o logging padrão do Python já é suficiente
@@ -150,8 +192,37 @@ configure_logging()  # Carrega configuração das variáveis de ambiente
 
 A biblioteca inclui uma pipeline GitHub Actions para automação de testes e publicação:
 - Execução de testes unitários e de integração
-- Relatório de cobertura de código (cobertura atual: 88%)
+- Relatório de cobertura de código (cobertura atual: 93%)
 - Build e publicação automática no PyPI quando uma nova tag é criada
+
+## Executando os Testes
+
+Para executar os testes localmente, primeiro instale as dependências de desenvolvimento:
+
+```bash
+pip install ".[test]"
+```
+
+### Testes Unitários e de Integração
+
+Execute todos os testes:
+```bash
+pytest tests/
+```
+
+### Cobertura de Código
+
+Execute os testes com relatório de cobertura:
+```bash
+pytest --cov=src tests/ --cov-report=term-missing
+```
+
+Opções adicionais de cobertura:
+- Gerar relatório HTML detalhado: `--cov-report=html`
+- Gerar relatório XML (para CI): `--cov-report=xml`
+- Definir limite mínimo de cobertura: `--cov-fail-under=90`
+
+Os relatórios HTML serão gerados no diretório `htmlcov/`. Abra `htmlcov/index.html` no navegador para uma visualização detalhada.
 
 ## Licença
 
