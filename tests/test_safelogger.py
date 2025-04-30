@@ -128,7 +128,7 @@ def test_configure_logging_with_dict():
 
 # Teste de handler cloud
 def test_cloud_log_handler(capsys):
-    handler = CloudLogHandler(endpoint="https://mock.log/api", token="abc")
+    handler = CloudLogHandler(endpoint="https://mock.log/api", token="abc", mock_mode=True)
     logger = logging.getLogger("cloudtest")
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
@@ -217,3 +217,34 @@ def test_configure_logging_with_custom_handlers():
     logger = get_traditional_logger()
     logger.info("Test custom handler")
     # O teste passa se não há exceção 
+
+# Teste detalhado de structlog_support
+@pytest.mark.skipif('structlog' not in sys.modules, reason="structlog não instalado")
+def test_configure_structlog_detailed():
+    try:
+        import structlog
+        from src.structlog_support import configure_structlog
+        
+        # Definir processadores de teste
+        processors = [
+            structlog.stdlib.filter_by_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer()
+        ]
+        
+        # Caso 1: Sem contexto
+        logger1 = configure_structlog(processors, log_format="text")
+        assert logger1 is not None
+        
+        # Caso 2: Com contexto
+        test_context = {"user_id": 123, "session": "abc"}
+        logger2 = configure_structlog(processors, log_format="text", structlog_context=test_context)
+        assert logger2 is not None
+        
+        # Verificar se o logger tem a capacidade de binding
+        assert hasattr(logger2, 'bind')
+        
+        # Não validamos a verificação direta de _context que pode variar entre versões
+        
+    except ImportError:
+        pytest.skip("structlog não está disponível") 

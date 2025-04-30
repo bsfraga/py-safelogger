@@ -1,13 +1,19 @@
 import os
 import pytest
+import logging
 from src.utils.config import (
     get_env_var,
     validate_log_level,
     validate_url,
     load_config_from_env,
+    load_env,
     MissingEnvError,
     InvalidEnvError,
-    ConfigError
+    ConfigError,
+    load_config_file,
+    load_config_dict,
+    validate_required_envs,
+    get_env
 )
 
 def test_get_env_var_required_exists(monkeypatch):
@@ -93,7 +99,7 @@ def test_load_config_from_env_complete(monkeypatch):
 
 def test_load_config_from_env_missing_required():
     with pytest.raises(MissingEnvError) as exc:
-        load_config_from_env()
+        load_config_from_env(require_log_level=True)
     assert "LOG_LEVEL" in str(exc.value)
 
 def test_load_config_from_env_invalid_level(monkeypatch):
@@ -109,4 +115,194 @@ def test_load_config_from_env_invalid_url(monkeypatch):
     with pytest.raises(InvalidEnvError) as exc:
         load_config_from_env()
     assert "LOG_HTTP_URL" in str(exc.value)
-    assert "not_a_url" in str(exc.value) 
+    assert "not_a_url" in str(exc.value)
+
+def test_load_config_file_yaml(monkeypatch, tmpdir):
+    # Garantir que yaml esteja disponível para o teste
+    try:
+        import yaml
+    except ImportError:
+        monkeypatch.setattr("src.utils.config.yaml", __import__("yaml"))
+    
+    # Criar um arquivo YAML de teste
+    yaml_content = """
+    version: 1
+    handlers:
+      console:
+        class: logging.StreamHandler
+    root:
+      level: INFO
+    """
+    yaml_file = tmpdir.join("config.yaml")
+    yaml_file.write(yaml_content)
+    
+    # Carregar e verificar
+    config = load_config_file(str(yaml_file))
+    assert config is not None
+    assert config["version"] == 1
+    assert "console" in config["handlers"]
+    assert config["root"]["level"] == "INFO"
+
+def test_load_config_file_json(tmpdir):
+    # Criar um arquivo JSON de teste
+    json_content = """
+    {
+        "version": 1,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler"
+            }
+        },
+        "root": {
+            "level": "INFO"
+        }
+    }
+    """
+    json_file = tmpdir.join("config.json")
+    json_file.write(json_content)
+    
+    # Carregar e verificar
+    config = load_config_file(str(json_file))
+    assert config is not None
+    assert config["version"] == 1
+    assert "console" in config["handlers"]
+    assert config["root"]["level"] == "INFO"
+
+def test_load_config_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        load_config_file("/path/to/nonexistent/file.yaml")
+
+def test_load_config_file_unsupported_format(tmpdir):
+    # Criar um arquivo com formato não suportado
+    config_file = tmpdir.join("config.txt")
+    config_file.write("This is not a valid config file")
+    
+    with pytest.raises(ValueError, match="Formato de arquivo não suportado"):
+        load_config_file(str(config_file))
+
+def test_load_config_file_none():
+    assert load_config_file(None) is None
+
+def test_load_config_dict():
+    # Dicionário válido
+    config = {
+        "version": 1,
+        "handlers": {"console": {"class": "logging.StreamHandler"}},
+        "root": {"level": "INFO"}
+    }
+    assert load_config_dict(config) == config
+    
+    # None retorna None
+    assert load_config_dict(None) is None
+    
+    # Dicionário vazio é retornado como está
+    assert load_config_dict({}) == {}
+
+# Testes para as novas funções
+
+def test_validate_required_envs_all_exist(monkeypatch):
+    monkeypatch.setenv("ENV1", "value1")
+    monkeypatch.setenv("ENV2", "value2")
+    monkeypatch.setenv("ENV3", "value3")
+    
+    # Não deve levantar exceção
+    validate_required_envs(["ENV1", "ENV2", "ENV3"])
+
+def test_validate_required_envs_some_missing():
+    with pytest.raises(EnvironmentError) as exc:
+        validate_required_envs(["LOG_LEVEL", "NONEXISTENT_VAR", "ANOTHER_MISSING_VAR"])
+    assert "NONEXISTENT_VAR" in str(exc.value)
+    assert "ANOTHER_MISSING_VAR" in str(exc.value)
+
+def test_validate_required_envs_empty_list():
+    # Lista vazia não deve levantar exceção
+    validate_required_envs([])
+
+def test_get_env_exists(monkeypatch):
+    monkeypatch.setenv("TEST_VAR", "test_value")
+    assert get_env("TEST_VAR") == "test_value"
+
+def test_get_env_missing_with_default():
+    assert get_env("NONEXISTENT_VAR", default="default_value") == "default_value"
+
+def test_get_env_cast_int(monkeypatch):
+    monkeypatch.setenv("TEST_INT", "123")
+    assert get_env("TEST_INT", cast=int) == 123
+
+def test_get_env_cast_float(monkeypatch):
+    monkeypatch.setenv("TEST_FLOAT", "123.45")
+    assert get_env("TEST_FLOAT", cast=float) == 123.45
+
+def test_get_env_cast_bool(monkeypatch):
+    # Valores que devem resultar em True
+    for value in ["true", "True", "TRUE", "1", "yes", "YES", "y", "on", "ON", "sim", "SIM", "s"]:
+        monkeypatch.setenv("TEST_BOOL", value)
+        assert get_env("TEST_BOOL", cast=bool) is True
+    
+    # Valores que devem resultar em False
+    for value in ["false", "False", "FALSE", "0", "no", "NO", "n", "off", "OFF", "não", "NAO", "nao"]:
+        monkeypatch.setenv("TEST_BOOL", value)
+        assert get_env("TEST_BOOL", cast=bool) is False
+
+def test_get_env_invalid_cast(monkeypatch):
+    monkeypatch.setenv("TEST_VAR", "not_an_int")
+    with pytest.raises(ValueError) as exc:
+        get_env("TEST_VAR", cast=int)
+    assert "not_an_int" in str(exc.value)
+    assert "int" in str(exc.value)
+
+def test_load_env_with_logger(monkeypatch, caplog):
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
+    
+    with caplog.at_level(logging.INFO):
+        logger = logging.getLogger("test_logger")
+        config = load_env(logger=logger)
+    
+    # Verificar se as mensagens de log foram registradas
+    assert "Iniciando carregamento de configurações a partir de variáveis de ambiente" in caplog.text
+    assert "Configurações carregadas com sucesso" in caplog.text
+    assert config["log_level"] == "INFO"
+
+def test_load_env_with_logger_invalid_level(monkeypatch, caplog):
+    monkeypatch.setenv("LOG_LEVEL", "INVALID")
+    
+    with caplog.at_level(logging.ERROR):
+        logger = logging.getLogger("test_logger")
+        with pytest.raises(InvalidEnvError):
+            load_env(logger=logger)
+    
+    # Verificar se o erro foi logado
+    assert "LOG_LEVEL inválido" in caplog.text
+
+def test_load_env_with_logger_missing_level(monkeypatch, caplog):
+    # Remover LOG_LEVEL se existir
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    
+    # Configurar caplog antes de criar o logger
+    caplog.set_level(logging.WARNING)
+    
+    # Criar logger após configurar caplog
+    logger = logging.getLogger("test_logger")
+    logger.setLevel(logging.WARNING)
+    
+    # Limpar quaisquer mensagens anteriores
+    caplog.clear()
+    
+    # Executar a função
+    config = load_env(require_log_level=False, logger=logger)
+    
+    # Verificar se o aviso foi logado
+    assert "LOG_LEVEL não encontrado, usando valor padrão" in caplog.text
+    assert config["log_level"] == "INFO"
+
+def test_load_env_with_logger_invalid_url(monkeypatch, caplog):
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
+    monkeypatch.setenv("LOG_HTTP_URL", "not_a_url")
+    
+    with caplog.at_level(logging.ERROR):
+        logger = logging.getLogger("test_logger")
+        with pytest.raises(InvalidEnvError):
+            load_env(logger=logger)
+    
+    # Verificar se o erro foi logado
+    assert "LOG_HTTP_URL inválido" in caplog.text 
