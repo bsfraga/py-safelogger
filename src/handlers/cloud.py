@@ -1,7 +1,7 @@
 import logging
 import sys
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from urllib.parse import urlparse
 
 import requests
@@ -39,6 +39,7 @@ class CloudLogHandler(logging.Handler):
         timeout: Optional[int] = None,
         max_retries: Optional[int] = None,
         backoff_factor: Optional[float] = None,
+        mock_mode: bool = False,
         **kwargs
     ):
         super().__init__()
@@ -49,6 +50,7 @@ class CloudLogHandler(logging.Handler):
         self.timeout = int(timeout or os.getenv("LOG_CLOUD_TIMEOUT", "5"))
         self.max_retries = int(max_retries or os.getenv("LOG_CLOUD_MAX_RETRIES", "3"))
         self.backoff_factor = float(backoff_factor or os.getenv("LOG_CLOUD_BACKOFF_FACTOR", "0.3"))
+        self.mock_mode = mock_mode or os.getenv("LOG_CLOUD_MOCK", "").lower() in ("true", "1", "yes")
         
         # Validação do endpoint
         if not self.endpoint:
@@ -61,19 +63,20 @@ class CloudLogHandler(logging.Handler):
         except ValueError:
             raise ValueError(f"Invalid cloud logging endpoint URL: {self.endpoint}")
             
-        # Configuração da sessão HTTP com retry
-        self.session = requests.Session()
-        retry_strategy = Retry(
-            total=self.max_retries,
-            backoff_factor=self.backoff_factor,
-            status_forcelist=[408, 429, 500, 502, 503, 504],
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
-        
-        if self.token:
-            self.session.headers.update({"Authorization": f"Bearer {self.token}"})
+        # Configuração da sessão HTTP com retry (a menos que estejamos em modo de mock)
+        if not self.mock_mode:
+            self.session = requests.Session()
+            retry_strategy = Retry(
+                total=self.max_retries,
+                backoff_factor=self.backoff_factor,
+                status_forcelist=[408, 429, 500, 502, 503, 504],
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            self.session.mount("http://", adapter)
+            self.session.mount("https://", adapter)
+            
+            if self.token:
+                self.session.headers.update({"Authorization": f"Bearer {self.token}"})
     
     def emit(self, record: logging.LogRecord) -> None:
         """
@@ -82,9 +85,16 @@ class CloudLogHandler(logging.Handler):
         if not self.endpoint:
             self.handleError(record)
             return
-            
+        
         try:
             log_entry = self.format(record)
+            
+            if self.mock_mode:
+                # Modo de teste/mock: apenas imprimir a mensagem em vez de fazer uma requisição HTTP
+                print(f"[MOCK CLOUD] POST {self.endpoint}", file=sys.stderr)
+                print(f"[MOCK CLOUD] DATA: {log_entry}", file=sys.stderr)
+                return
+                
             headers = {"Content-Type": "application/json"}
             
             response = self.session.post(
