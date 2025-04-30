@@ -6,7 +6,7 @@ from src.safelogger import (
     CloudLogHandler
 )
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 __all__ = [
     "configure_logging",
