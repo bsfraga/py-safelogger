@@ -87,7 +87,7 @@ def configure_logging(
         env = env or envs["env"]
         log_format = log_format or envs["log_format"]
         log_level = log_level or envs["log_level"]
-        log_file = log_file or envs["log_file"]
+        log_file = log_file or envs.get("log_file")  # Pode ser None
         handlers = handlers or ["console"]
         formatter = {
             "format": "%(asctime)s %(levelname)s %(name)s %(message)s"
